@@ -286,9 +286,13 @@
                 this.isActive = false;
                 this.isConnected = false;
                 this.audioChunks = [];
+                this.audioQueue = [];
+                this.isPlaying = false;
+                this.playbackContext = null;
                 
                 this.initializeElements();
                 this.connectWebSocket();
+                this.initializeAudioPlayback();
             }
 
             initializeElements() {
@@ -414,6 +418,10 @@
 
             interrupt() {
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    // Clear audio queue and stop current playback
+                    this.audioQueue = [];
+                    this.isPlaying = false;
+                    
                     this.ws.send(JSON.stringify({
                         type: 'interrupt'
                     }));
@@ -453,21 +461,69 @@
                 }
             }
 
+            initializeAudioPlayback() {
+                // Create audio context for playback
+                this.playbackContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
             playAudioDelta(base64Audio) {
                 // Convert base64 to audio and play
                 try {
+                    if (!base64Audio || base64Audio.length === 0) return;
+                    
                     const binaryString = atob(base64Audio);
                     const bytes = new Uint8Array(binaryString.length);
                     for (let i = 0; i < binaryString.length; i++) {
                         bytes[i] = binaryString.charCodeAt(i);
                     }
                     
-                    // For real-time audio playback, you'd typically use Web Audio API
-                    // This is a simplified version - you might want to use a proper audio streaming library
+                    // Convert bytes to 16-bit PCM samples
+                    const samples = new Int16Array(bytes.buffer);
+                    
+                    // Convert to float32 for Web Audio API
+                    const floatSamples = new Float32Array(samples.length);
+                    for (let i = 0; i < samples.length; i++) {
+                        floatSamples[i] = samples[i] / 32768.0; // Convert from int16 to float32
+                    }
+                    
+                    // Create audio buffer
+                    const audioBuffer = this.playbackContext.createBuffer(1, floatSamples.length, 16000);
+                    audioBuffer.getChannelData(0).set(floatSamples);
+                    
+                    // Add to queue
+                    this.audioQueue.push(audioBuffer);
+                    
+                    // Start playing if not already playing
+                    if (!this.isPlaying) {
+                        this.playNextAudio();
+                    }
+                    
                     this.updateStatus('AI is speaking...', 'speaking');
                 } catch (error) {
                     console.error('Error playing audio:', error);
                 }
+            }
+
+            playNextAudio() {
+                if (this.audioQueue.length === 0) {
+                    this.isPlaying = false;
+                    return;
+                }
+                
+                this.isPlaying = true;
+                const audioBuffer = this.audioQueue.shift();
+                
+                // Create buffer source
+                const source = this.playbackContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(this.playbackContext.destination);
+                
+                // Play next audio when this one finishes
+                source.onended = () => {
+                    this.playNextAudio();
+                };
+                
+                source.start(0);
             }
 
             appendAiTranscript(text) {
