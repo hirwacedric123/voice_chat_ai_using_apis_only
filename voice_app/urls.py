@@ -7,4 +7,5 @@ urlpatterns = [
     path('', views.index, name='index'),
     path('voice-chat/', views.voice_chat, name='voice_chat'),
     path('test-transcript/', views.test_transcript_only, name='test_transcript'),
+    path('realtime/', views.realtime_index, name='realtime_index'),
 ] 

@@ -29,6 +29,10 @@ def index(request):
     """Render the main voice chat interface."""
     return render(request, 'voice_app/index.html')
 
+def realtime_index(request):
+    """Render the real-time voice chat interface."""
+    return render(request, 'voice_app/realtime.html')
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def voice_chat(request):

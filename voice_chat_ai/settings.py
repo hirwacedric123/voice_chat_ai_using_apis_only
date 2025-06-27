@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
     "voice_app",
 ]
 
@@ -74,6 +75,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "voice_chat_ai.wsgi.application"
+ASGI_APPLICATION = "voice_chat_ai.asgi.application"
+
+# Channels configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
 
 
 # Database
