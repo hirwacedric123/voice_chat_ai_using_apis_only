@@ -14,6 +14,7 @@ class RealTimeVoiceChatConsumer(AsyncWebsocketConsumer):
         super().__init__(*args, **kwargs)
         self.openai_ws = None
         self.openai_task = None
+        self.current_voice = "alloy"  # Default voice
 
     async def connect(self):
         await self.accept()
@@ -69,7 +70,7 @@ class RealTimeVoiceChatConsumer(AsyncWebsocketConsumer):
             "session": {
                 "modalities": ["text", "audio"],
                 "instructions": "You are a helpful and friendly AI assistant. Keep your responses conversational and natural. You can be interrupted at any time.",
-                "voice": "alloy",
+                "voice": self.current_voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "input_audio_transcription": {
@@ -192,6 +193,16 @@ class RealTimeVoiceChatConsumer(AsyncWebsocketConsumer):
                     await self.openai_ws.send_str(json.dumps(interrupt_message))
                 else:
                     logger.warning("OpenAI WebSocket not connected, cannot interrupt")
+                    
+            elif message_type == 'change_voice':
+                # Change AI voice
+                new_voice = data.get('voice', 'alloy')
+                if new_voice in ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']:
+                    self.current_voice = new_voice
+                    await self.configure_session()  # Reconfigure session with new voice
+                    logger.info(f"Voice changed to: {new_voice}")
+                else:
+                    logger.warning(f"Invalid voice requested: {new_voice}")
                 
         except Exception as e:
             logger.error(f"Error handling client message: {e}")

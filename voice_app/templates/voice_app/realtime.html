@@ -39,8 +39,42 @@
 
         .subtitle {
             color: #666;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             font-size: 1.1em;
+        }
+
+        .voice-selector {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .voice-selector label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .voice-select {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            font-size: 1em;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .voice-select:hover {
+            border-color: #764ba2;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .voice-select:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         .voice-controls {
@@ -244,6 +278,11 @@
                 flex-direction: column;
                 gap: 15px;
             }
+            
+            .voice-select {
+                width: 100%;
+                max-width: 280px;
+            }
         }
     </style>
 </head>
@@ -253,6 +292,20 @@
     <div class="container">
         <h1>🎙️ Real-Time AI Voice Chat</h1>
         <p class="subtitle">Speak naturally - AI responds in real-time! You can interrupt anytime.</p>
+
+        <div class="voice-selector">
+            <label for="voiceSelect">🎵 AI Voice:</label>
+            <select id="voiceSelect" class="voice-select">
+                <option value="alloy">Alloy (Neutral)</option>
+                <option value="ash">Ash (Animated)</option>
+                <option value="ballad">Ballad (Calm)</option>
+                <option value="coral">Coral (Warm)</option>
+                <option value="echo">Echo (Male)</option>
+                <option value="sage">Sage (Wise)</option>
+                <option value="shimmer">Shimmer (Soft Female)</option>
+                <option value="verse">Verse (Poetic)</option>
+            </select>
+        </div>
 
         <div class="voice-controls">
             <button id="toggleBtn" class="record-btn" title="Toggle voice chat">🎤</button>
@@ -298,6 +351,7 @@
             initializeElements() {
                 this.toggleBtn = document.getElementById('toggleBtn');
                 this.interruptBtn = document.getElementById('interruptBtn');
+                this.voiceSelect = document.getElementById('voiceSelect');
                 this.status = document.getElementById('status');
                 this.userTranscript = document.getElementById('userTranscript');
                 this.aiTranscript = document.getElementById('aiTranscript');
@@ -306,6 +360,7 @@
 
                 this.toggleBtn.addEventListener('click', () => this.toggleVoiceChat());
                 this.interruptBtn.addEventListener('click', () => this.interrupt());
+                this.voiceSelect.addEventListener('change', () => this.changeVoice());
             }
 
             connectWebSocket() {
@@ -426,6 +481,17 @@
                         type: 'interrupt'
                     }));
                     this.updateStatus('Interrupting AI response...', 'listening');
+                }
+            }
+
+            changeVoice() {
+                const selectedVoice = this.voiceSelect.value;
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({
+                        type: 'change_voice',
+                        voice: selectedVoice
+                    }));
+                    this.updateStatus(`Voice changed to ${selectedVoice.charAt(0).toUpperCase() + selectedVoice.slice(1)}`);
                 }
             }
 
