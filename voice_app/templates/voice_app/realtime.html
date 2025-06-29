@@ -476,7 +476,7 @@
                     // Request microphone access
                     const stream = await navigator.mediaDevices.getUserMedia({ 
                         audio: {
-                            sampleRate: 16000,
+                            sampleRate: 19000,
                             channelCount: 1,
                             echoCancellation: true,
                             noiseSuppression: true
@@ -497,7 +497,7 @@
             }
 
             setupAudioRecording(stream) {
-                this.audioContext = new AudioContext({ sampleRate: 16000 });
+                this.audioContext = new AudioContext({ sampleRate: 19000 });
                 const source = this.audioContext.createMediaStreamSource(stream);
                 
                 // Create a script processor for real-time audio processing
@@ -708,7 +708,7 @@
                 console.log('Using HTML5 Audio API for reliable playback');
                 this.useWebAudio = false;
                 this.audioMethodSpan.textContent = 'HTML5 Audio (Reliable)';
-                this.contextSampleRateSpan.textContent = '16000 Hz (Native)';
+                this.contextSampleRateSpan.textContent = '19000 Hz (Native)';
                 
                 // Initialize audio queue for HTML5 Audio
                 this.audioElements = [];
@@ -724,7 +724,7 @@
             }
 
             // Helper function to create WAV file from PCM data
-            createWavFile(pcmData, sampleRate = 16000) {
+            createWavFile(pcmData, sampleRate = 19000) {
                 const numChannels = 1;
                 const bitsPerSample = 16;
                 const byteRate = sampleRate * numChannels * bitsPerSample / 8;
@@ -854,7 +854,7 @@
 
             playAudioWithHTML5(samples) {
                 // Create WAV file from PCM data at correct sample rate
-                const wavBlob = this.createWavFile(samples, 16000);
+                const wavBlob = this.createWavFile(samples, 19000);
                 const audioUrl = URL.createObjectURL(wavBlob);
                 
                 // Add to queue for sequential playback
