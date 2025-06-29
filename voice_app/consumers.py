@@ -197,12 +197,48 @@ class RealTimeVoiceChatConsumer(AsyncWebsocketConsumer):
             elif message_type == 'change_voice':
                 # Change AI voice
                 new_voice = data.get('voice', 'alloy')
+                logger.info(f"Voice change requested: {new_voice}")
                 if new_voice in ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']:
+                    old_voice = self.current_voice
                     self.current_voice = new_voice
                     await self.configure_session()  # Reconfigure session with new voice
-                    logger.info(f"Voice changed to: {new_voice}")
+                    logger.info(f"Voice successfully changed from {old_voice} to: {new_voice}")
+                    
+                    # Send confirmation back to client
+                    await self.send(text_data=json.dumps({
+                        'type': 'voice_changed',
+                        'voice': new_voice,
+                        'message': f'Voice changed to {new_voice}'
+                    }))
                 else:
                     logger.warning(f"Invalid voice requested: {new_voice}")
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': f'Invalid voice: {new_voice}'
+                    }))
+                    
+            elif message_type == 'test_voice':
+                # Test voice with a predefined message
+                test_message = data.get('message', 'Hello! This is a voice test.')
+                logger.info(f"Voice test requested with message: '{test_message}'")
+                
+                if self.openai_ws:
+                    # Send text message to be converted to speech
+                    response_message = {
+                        "type": "response.create",
+                        "response": {
+                            "modalities": ["text", "audio"],
+                            "instructions": f"Please say exactly this message: '{test_message}'"
+                        }
+                    }
+                    await self.openai_ws.send_str(json.dumps(response_message))
+                    logger.info("Voice test message sent to OpenAI")
+                else:
+                    logger.warning("OpenAI WebSocket not connected, cannot test voice")
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': 'Not connected to AI service'
+                    }))
                 
         except Exception as e:
             logger.error(f"Error handling client message: {e}")

@@ -175,6 +175,40 @@
             margin: 5px 0;
         }
 
+        .voice-selector {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .voice-selector label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .voice-select {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            font-size: 1em;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .voice-select:hover {
+            border-color: #764ba2;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .voice-select:focus {
+            outline: none;
+            border-color: #764ba2;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
         .hidden {
             display: none;
         }
@@ -185,9 +219,22 @@
         <h1>🎙️ AI Voice Chat</h1>
         <p class="subtitle">Talk to AI naturally - just speak and listen!</p>
 
+        <div class="voice-selector">
+            <label for="voiceSelect">🎵 AI Voice:</label>
+            <select id="voiceSelect" class="voice-select">
+                <option value="alloy">Alloy (Neutral)</option>
+                <option value="echo">Echo (Male)</option>
+                <option value="fable">Fable (British Male)</option>
+                <option value="onyx">Onyx (Deep Male)</option>
+                <option value="nova">Nova (Female)</option>
+                <option value="shimmer">Shimmer (Soft Female)</option>
+            </select>
+        </div>
+
         <div class="instructions">
             <h3>How to use:</h3>
             <ol>
+                <li>Select your preferred AI voice above</li>
                 <li>Click the microphone button to start recording</li>
                 <li>Speak your message clearly</li>
                 <li>Click stop when you're done</li>
@@ -345,8 +392,13 @@
                 
                 const formData = new FormData();
                 formData.append('audio', recordedAudioBlob, 'recording.webm');
-
-                console.log('Sending request to /voice-chat/');
+                
+                // Get selected voice
+                const voiceSelect = document.getElementById('voiceSelect');
+                const selectedVoice = voiceSelect.value;
+                formData.append('voice', selectedVoice);
+                
+                console.log('Sending request to /voice-chat/ with voice:', selectedVoice);
                 const response = await fetch('/voice-chat/', {
                     method: 'POST',
                     body: formData

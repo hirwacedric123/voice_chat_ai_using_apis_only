@@ -77,6 +77,31 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        .test-voice-btn {
+            margin-left: 15px;
+            padding: 8px 15px;
+            background: linear-gradient(135deg, #2ed573, #1e90ff);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 10px rgba(46, 213, 115, 0.3);
+        }
+
+        .test-voice-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(46, 213, 115, 0.4);
+        }
+
+        .test-voice-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
         .voice-controls {
             margin: 30px 0;
             display: flex;
@@ -269,6 +294,30 @@
             display: none;
         }
 
+        .debug-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+
+        .debug-panel h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .debug-panel div {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .debug-panel span {
+            font-weight: bold;
+            color: #2ed573;
+        }
+
         @media (max-width: 768px) {
             .transcripts {
                 grid-template-columns: 1fr;
@@ -305,6 +354,7 @@
                 <option value="shimmer">Shimmer (Soft Female)</option>
                 <option value="verse">Verse (Poetic)</option>
             </select>
+            <button id="testVoiceBtn" class="test-voice-btn">🔊 Test This Voice</button>
         </div>
 
         <div class="voice-controls">
@@ -328,6 +378,17 @@
         </div>
 
         <div id="errorMessage" class="error-message"></div>
+        
+        <div class="debug-panel" id="debugPanel">
+            <h4>🔧 Audio Debug Info</h4>
+            <div id="debugInfo">
+                <div>Audio Method: <span id="audioMethod">-</span></div>
+                <div>Context Sample Rate: <span id="contextSampleRate">-</span></div>
+                <div>Audio Chunks Received: <span id="audioChunks">0</span></div>
+                <div>Buffer Size: <span id="bufferSize">0</span> samples</div>
+                <div>Last Voice: <span id="lastVoice">-</span></div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -342,6 +403,7 @@
                 this.audioQueue = [];
                 this.isPlaying = false;
                 this.playbackContext = null;
+                this.audioChunkCount = 0;
                 
                 this.initializeElements();
                 this.connectWebSocket();
@@ -352,15 +414,24 @@
                 this.toggleBtn = document.getElementById('toggleBtn');
                 this.interruptBtn = document.getElementById('interruptBtn');
                 this.voiceSelect = document.getElementById('voiceSelect');
+                this.testVoiceBtn = document.getElementById('testVoiceBtn');
                 this.status = document.getElementById('status');
                 this.userTranscript = document.getElementById('userTranscript');
                 this.aiTranscript = document.getElementById('aiTranscript');
                 this.connectionStatus = document.getElementById('connectionStatus');
                 this.errorMessage = document.getElementById('errorMessage');
+                
+                // Debug elements
+                this.audioMethodSpan = document.getElementById('audioMethod');
+                this.contextSampleRateSpan = document.getElementById('contextSampleRate');
+                this.audioChunksSpan = document.getElementById('audioChunks');
+                this.bufferSizeSpan = document.getElementById('bufferSize');
+                this.lastVoiceSpan = document.getElementById('lastVoice');
 
                 this.toggleBtn.addEventListener('click', () => this.toggleVoiceChat());
                 this.interruptBtn.addEventListener('click', () => this.interrupt());
                 this.voiceSelect.addEventListener('change', () => this.changeVoice());
+                this.testVoiceBtn.addEventListener('click', () => this.testVoice());
             }
 
             connectWebSocket() {
@@ -476,6 +547,23 @@
                     // Clear audio queue and stop current playback
                     this.audioQueue = [];
                     this.isPlaying = false;
+                    this.isPlayingHTML5 = false;
+                    
+                    // Clear audio buffer
+                    this.audioBuffer = [];
+                    this.bufferSize = 0;
+                    if (this.bufferTimeout) {
+                        clearTimeout(this.bufferTimeout);
+                        this.bufferTimeout = null;
+                    }
+                    
+                    // Stop all currently playing audio elements
+                    this.audioElements.forEach(audio => {
+                        if (!audio.paused) {
+                            audio.pause();
+                            audio.currentTime = 0;
+                        }
+                    });
                     
                     this.ws.send(JSON.stringify({
                         type: 'interrupt'
@@ -486,13 +574,92 @@
 
             changeVoice() {
                 const selectedVoice = this.voiceSelect.value;
+                console.log('Changing voice to:', selectedVoice);
+                
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({
                         type: 'change_voice',
                         voice: selectedVoice
                     }));
                     this.updateStatus(`Voice changed to ${selectedVoice.charAt(0).toUpperCase() + selectedVoice.slice(1)}`);
+                } else {
+                    console.warn('WebSocket not connected, cannot change voice');
+                    this.showError('Not connected. Please refresh and try again.');
                 }
+            }
+
+            testVoice() {
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                    this.showError('Not connected. Please refresh and try again.');
+                    return;
+                }
+
+                const selectedVoice = this.voiceSelect.value;
+                
+                // Disable button during test
+                this.testVoiceBtn.disabled = true;
+                this.testVoiceBtn.textContent = '🔄 Testing...';
+                
+                // Clear previous audio completely
+                this.audioQueue = [];
+                this.isPlaying = false;
+                this.isPlayingHTML5 = false;
+                
+                // Clear audio buffer
+                this.audioBuffer = [];
+                this.bufferSize = 0;
+                if (this.bufferTimeout) {
+                    clearTimeout(this.bufferTimeout);
+                    this.bufferTimeout = null;
+                }
+                
+                // Stop any currently playing audio
+                this.audioElements.forEach(audio => {
+                    if (!audio.paused) {
+                        audio.pause();
+                        audio.currentTime = 0;
+                    }
+                });
+                
+                // Clear transcripts for cleaner test
+                this.userTranscript.textContent = '';
+                this.aiTranscript.textContent = '';
+                
+                // Send test message to AI
+                const testMessages = {
+                    'alloy': 'Hello! This is the Alloy voice, designed to sound neutral and balanced.',
+                    'ash': 'Hi there! I\'m Ash, with an animated and expressive personality!',
+                    'ballad': 'Greetings. I am Ballad, speaking in a calm and soothing tone.',
+                    'coral': 'Hello friend! I\'m Coral, with a warm and welcoming voice.',
+                    'echo': 'Hello. This is Echo, with a clear male voice.',
+                    'sage': 'Greetings. I am Sage, speaking with wisdom and thoughtfulness.',
+                    'shimmer': 'Hello! I\'m Shimmer, with a soft and gentle female voice.',
+                    'verse': 'Hello! I am Verse, speaking with poetic and artistic expression.'
+                };
+                
+                const testMessage = testMessages[selectedVoice] || `Hello! This is a test of the ${selectedVoice} voice.`;
+                
+                // First change voice, then send test message
+                this.ws.send(JSON.stringify({
+                    type: 'change_voice',
+                    voice: selectedVoice
+                }));
+                
+                // Wait a moment for voice change, then send test message
+                setTimeout(() => {
+                    this.ws.send(JSON.stringify({
+                        type: 'test_voice',
+                        message: testMessage
+                    }));
+                    
+                    this.updateStatus(`🎵 Testing ${selectedVoice} voice - Listen for the difference!`, 'speaking');
+                    
+                    // Re-enable button after a few seconds
+                    setTimeout(() => {
+                        this.testVoiceBtn.disabled = false;
+                        this.testVoiceBtn.textContent = '🔊 Test This Voice';
+                    }, 6000);
+                }, 500);
             }
 
             handleWebSocketMessage(data) {
@@ -518,7 +685,16 @@
                         break;
                     
                     case 'response_done':
+                        // Flush any remaining audio buffer
+                        this.flushAudioBuffer();
                         this.updateStatus('AI finished speaking. Continue the conversation!', 'active');
+                        break;
+                    
+                    case 'voice_changed':
+                        console.log('Voice changed confirmation:', data);
+                        this.updateStatus(`✅ ${data.message}`, 'active');
+                        this.lastVoiceSpan.textContent = data.voice;
+                        console.log(`Debug panel updated - Last Voice: ${data.voice}`);
                         break;
                     
                     case 'error':
@@ -528,12 +704,76 @@
             }
 
             initializeAudioPlayback() {
-                // Create audio context for playback
-                this.playbackContext = new (window.AudioContext || window.webkitAudioContext)();
+                // Always use HTML5 Audio for better compatibility and correct sample rate handling
+                console.log('Using HTML5 Audio API for reliable playback');
+                this.useWebAudio = false;
+                this.audioMethodSpan.textContent = 'HTML5 Audio (Reliable)';
+                this.contextSampleRateSpan.textContent = '16000 Hz (Native)';
+                
+                // Initialize audio queue for HTML5 Audio
+                this.audioElements = [];
+                this.audioElementIndex = 0;
+                this.audioQueue = [];
+                this.isPlayingHTML5 = false;
+                
+                // Audio buffering for better quality
+                this.audioBuffer = [];
+                this.bufferSize = 0;
+                this.maxBufferSize = 8000; // Buffer about 0.5 seconds at 16kHz
+                this.bufferTimeout = null;
+            }
+
+            // Helper function to create WAV file from PCM data
+            createWavFile(pcmData, sampleRate = 16000) {
+                const numChannels = 1;
+                const bitsPerSample = 16;
+                const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+                const blockAlign = numChannels * bitsPerSample / 8;
+                const dataLength = pcmData.length * 2;
+                
+                const buffer = new ArrayBuffer(44 + dataLength);
+                const view = new DataView(buffer);
+                
+                // Helper function to write string to buffer
+                const writeString = (offset, string) => {
+                    for (let i = 0; i < string.length; i++) {
+                        view.setUint8(offset + i, string.charCodeAt(i));
+                    }
+                };
+                
+                // RIFF header
+                writeString(0, 'RIFF');                          // ChunkID
+                view.setUint32(4, 36 + dataLength, true);        // ChunkSize
+                writeString(8, 'WAVE');                          // Format
+                
+                // fmt sub-chunk
+                writeString(12, 'fmt ');                         // Subchunk1ID
+                view.setUint32(16, 16, true);                    // Subchunk1Size (16 for PCM)
+                view.setUint16(20, 1, true);                     // AudioFormat (1 for PCM)
+                view.setUint16(22, numChannels, true);           // NumChannels
+                view.setUint32(24, sampleRate, true);            // SampleRate
+                view.setUint32(28, byteRate, true);              // ByteRate
+                view.setUint16(32, blockAlign, true);            // BlockAlign
+                view.setUint16(34, bitsPerSample, true);         // BitsPerSample
+                
+                // data sub-chunk
+                writeString(36, 'data');                         // Subchunk2ID
+                view.setUint32(40, dataLength, true);            // Subchunk2Size
+                
+                // Write PCM data
+                let offset = 44;
+                for (let i = 0; i < pcmData.length; i++) {
+                    view.setInt16(offset, pcmData[i], true);     // Little-endian
+                    offset += 2;
+                }
+                
+                console.log(`Created WAV file: ${sampleRate}Hz, ${numChannels} channel(s), ${bitsPerSample} bits, ${dataLength} bytes`);
+                console.log(`WAV file details - ByteRate: ${byteRate}, BlockAlign: ${blockAlign}`);
+                return new Blob([buffer], { type: 'audio/wav' });
             }
 
             playAudioDelta(base64Audio) {
-                // Convert base64 to audio and play
+                // Convert base64 to audio and buffer for better quality
                 try {
                     if (!base64Audio || base64Audio.length === 0) return;
                     
@@ -546,51 +786,142 @@
                     // Convert bytes to 16-bit PCM samples
                     const samples = new Int16Array(bytes.buffer);
                     
-                    // Convert to float32 for Web Audio API
-                    const floatSamples = new Float32Array(samples.length);
-                    for (let i = 0; i < samples.length; i++) {
-                        floatSamples[i] = samples[i] / 32768.0; // Convert from int16 to float32
-                    }
+                    // Add to buffer for smoother playback
+                    this.addToAudioBuffer(samples);
                     
-                    // Create audio buffer
-                    const audioBuffer = this.playbackContext.createBuffer(1, floatSamples.length, 16000);
-                    audioBuffer.getChannelData(0).set(floatSamples);
-                    
-                    // Add to queue
-                    this.audioQueue.push(audioBuffer);
-                    
-                    // Start playing if not already playing
-                    if (!this.isPlaying) {
-                        this.playNextAudio();
-                    }
+                    // Update debug info
+                    this.audioChunkCount++;
+                    this.audioChunksSpan.textContent = this.audioChunkCount;
                     
                     this.updateStatus('AI is speaking...', 'speaking');
                 } catch (error) {
-                    console.error('Error playing audio:', error);
+                    console.error('Error processing audio:', error);
+                    this.showError('Audio processing error. Please try again.');
                 }
             }
 
-            playNextAudio() {
+            addToAudioBuffer(samples) {
+                // Add samples to buffer
+                this.audioBuffer.push(...samples);
+                this.bufferSize += samples.length;
+                
+                // Update debug info
+                this.bufferSizeSpan.textContent = this.bufferSize;
+                
+                // Clear any existing timeout
+                if (this.bufferTimeout) {
+                    clearTimeout(this.bufferTimeout);
+                }
+                
+                // If buffer is large enough or timeout, process it
+                if (this.bufferSize >= this.maxBufferSize) {
+                    this.flushAudioBuffer();
+                } else {
+                    // Set timeout to flush buffer even if not full (for end of speech)
+                    this.bufferTimeout = setTimeout(() => {
+                        this.flushAudioBuffer();
+                    }, 200); // 200ms timeout
+                }
+            }
+
+            flushAudioBuffer() {
+                if (this.audioBuffer.length === 0) return;
+                
+                // Create Int16Array from buffer
+                const bufferedSamples = new Int16Array(this.audioBuffer);
+                
+                // Play the buffered audio
+                this.playAudioWithHTML5(bufferedSamples);
+                
+                // Clear buffer
+                this.audioBuffer = [];
+                this.bufferSize = 0;
+                
+                // Update debug info
+                this.bufferSizeSpan.textContent = this.bufferSize;
+                
+                // Clear timeout
+                if (this.bufferTimeout) {
+                    clearTimeout(this.bufferTimeout);
+                    this.bufferTimeout = null;
+                }
+                
+                console.log(`Flushed audio buffer: ${bufferedSamples.length} samples`);
+                console.log(`Sample range: min=${Math.min(...bufferedSamples)}, max=${Math.max(...bufferedSamples)}`);
+            }
+
+
+
+            playAudioWithHTML5(samples) {
+                // Create WAV file from PCM data at correct sample rate
+                const wavBlob = this.createWavFile(samples, 16000);
+                const audioUrl = URL.createObjectURL(wavBlob);
+                
+                // Add to queue for sequential playback
+                this.audioQueue.push({
+                    url: audioUrl,
+                    blob: wavBlob
+                });
+                
+                // Start playback if not already playing
+                if (!this.isPlayingHTML5) {
+                    this.playNextHTML5Audio();
+                }
+            }
+
+            playNextHTML5Audio() {
                 if (this.audioQueue.length === 0) {
-                    this.isPlaying = false;
+                    this.isPlayingHTML5 = false;
                     return;
                 }
                 
-                this.isPlaying = true;
-                const audioBuffer = this.audioQueue.shift();
+                this.isPlayingHTML5 = true;
+                const audioItem = this.audioQueue.shift();
                 
-                // Create buffer source
-                const source = this.playbackContext.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(this.playbackContext.destination);
+                // Create audio element
+                const audio = new Audio(audioItem.url);
+                audio.volume = 1.0;
                 
-                // Play next audio when this one finishes
-                source.onended = () => {
-                    this.playNextAudio();
-                };
+                // Set up event handlers
+                audio.addEventListener('ended', () => {
+                    URL.revokeObjectURL(audioItem.url);
+                    // Play next audio in queue
+                    this.playNextHTML5Audio();
+                });
                 
-                source.start(0);
+                audio.addEventListener('error', (e) => {
+                    console.error('HTML5 Audio playback error:', e);
+                    URL.revokeObjectURL(audioItem.url);
+                    // Try to continue with next audio
+                    this.playNextHTML5Audio();
+                });
+                
+                audio.addEventListener('canplaythrough', () => {
+                    console.log('Audio ready to play - WAV file created with 16kHz sample rate');
+                });
+                
+                audio.addEventListener('loadedmetadata', () => {
+                    console.log(`Audio metadata loaded - Duration: ${audio.duration.toFixed(2)}s`);
+                });
+                
+                // Play the audio
+                audio.play().catch(e => {
+                    console.error('Failed to start audio playback:', e);
+                    URL.revokeObjectURL(audioItem.url);
+                    this.playNextHTML5Audio();
+                });
+                
+                // Store reference for cleanup
+                this.audioElements.push(audio);
+                
+                // Clean up old audio elements
+                if (this.audioElements.length > 5) {
+                    const oldAudio = this.audioElements.shift();
+                    // Note: URL cleanup handled in 'ended' event
+                }
             }
+
+
 
             appendAiTranscript(text) {
                 this.aiTranscript.textContent += text;

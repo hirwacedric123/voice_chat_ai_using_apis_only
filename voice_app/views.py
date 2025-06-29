@@ -75,8 +75,10 @@ def voice_chat(request):
         logger.info(f"ChatGPT response: '{ai_response}'")
         
         # Step 3: Convert AI response to speech
-        logger.info("Step 3: Converting text to speech...")
-        audio_response = text_to_speech(ai_response)
+        # Get voice parameter from request (default to 'alloy')
+        selected_voice = request.POST.get('voice', 'alloy')
+        logger.info(f"Step 3: Converting text to speech with voice: {selected_voice}...")
+        audio_response = text_to_speech(ai_response, voice=selected_voice)
         if not audio_response:
             logger.error("Text-to-speech conversion failed")
             return JsonResponse({'error': 'Failed to generate speech'}, status=500)
@@ -185,15 +187,21 @@ def get_chatgpt_response(text):
         logger.error(f"ChatGPT traceback: {traceback.format_exc()}")
         return None
 
-def text_to_speech(text):
+def text_to_speech(text, voice="alloy"):
     """Convert text to speech using OpenAI TTS API."""
     try:
-        logger.info(f"Converting text to speech: '{text}' (length: {len(text)} chars)")
+        logger.info(f"Converting text to speech: '{text}' (length: {len(text)} chars) with voice: {voice}")
         
         # Check if API key is available
         if not settings.OPENAI_API_KEY:
             logger.error("OpenAI API key not configured")
             return None
+        
+        # Validate voice parameter
+        valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+        if voice not in valid_voices:
+            logger.warning(f"Invalid voice '{voice}', using 'alloy' instead")
+            voice = "alloy"
         
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         
@@ -201,13 +209,13 @@ def text_to_speech(text):
         logger.info(f"Using API key (first 7 chars): {settings.OPENAI_API_KEY[:7]}...")
         response = client.audio.speech.create(
             model="tts-1",
-            voice="alloy",  # You can change this to: alloy, echo, fable, onyx, nova, shimmer
+            voice=voice,
             input=text,
             response_format="mp3"
         )
         
         audio_content = response.content
-        logger.info(f"TTS completed successfully, audio size: {len(audio_content)} bytes")
+        logger.info(f"TTS completed successfully with voice '{voice}', audio size: {len(audio_content)} bytes")
         return audio_content
         
     except Exception as e:
